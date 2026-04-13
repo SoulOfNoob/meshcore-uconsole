@@ -234,10 +234,10 @@ class MessagesView(Gtk.Box):
             self._is_at_bottom = at_bottom
             self._scroll_bottom_btn.set_visible(not at_bottom)
 
-    def _on_adj_bounds_changed(self, adj: Gtk.Adjustment) -> None:
-        """Called after layout when content height changes. Stay pinned to bottom."""
+    def _on_adj_bounds_changed(self, _adj: Gtk.Adjustment) -> None:
+        """Called when content height changes. Schedule scroll after layout settles."""
         if self._is_at_bottom:
-            adj.set_value(adj.get_upper() - adj.get_page_size())
+            GLib.idle_add(self._scroll_to_bottom)
 
     def _on_scroll_to_bottom_clicked(self, _button: Gtk.Button) -> None:
         logger.debug("UI: scroll to bottom clicked")
