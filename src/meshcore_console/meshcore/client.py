@@ -416,6 +416,14 @@ class MeshcoreClient(MeshcoreService):
                 if event_type == EventType.PACKET:
                     payload_type = data.get("payload_type_name", "")
                     if payload_type == PayloadType.GRP_TXT and not data.get("channel_name"):
+                        logger.debug(
+                            "hop-debug: queuing GRP_TXT packet hash=%s path_len=%s path_hops=%s snr=%s rssi=%s",
+                            data.get("packet_hash"),
+                            data.get("path_len"),
+                            data.get("path_hops"),
+                            data.get("snr"),
+                            data.get("rssi"),
+                        )
                         self._unenriched_grp.append(data)
                     elif payload_type == PayloadType.TXT_MSG and not data.get("sender_name"):
                         self._unenriched_txt.append(data)
@@ -447,6 +455,24 @@ class MeshcoreClient(MeshcoreService):
                     for _field in ("path_len", "path_hops", "snr", "rssi"):
                         if _field not in data and target.get(_field) is not None:
                             data[_field] = target[_field]
+                    logger.debug(
+                        "hop-debug: MESH_CHANNEL_MESSAGE_NEW correlated sender=%s "
+                        "target_path_len=%s target_path_hops=%s "
+                        "data_path_len=%s data_path_hops=%s data_snr=%s",
+                        data.get("sender_name"),
+                        target.get("path_len"),
+                        target.get("path_hops"),
+                        data.get("path_len"),
+                        data.get("path_hops"),
+                        data.get("snr"),
+                    )
+                else:
+                    logger.debug(
+                        "hop-debug: MESH_CHANNEL_MESSAGE_NEW arrived but _unenriched_grp is EMPTY "
+                        "(correlation failed) sender=%s msg_id=%s",
+                        data.get("sender_name"),
+                        data.get("message_id"),
+                    )
 
             elif event_type == EventType.MESH_MESSAGE_NEW:
                 sender = data.get("sender_name") or data.get("peer_name")
@@ -687,12 +713,17 @@ class MeshcoreClient(MeshcoreService):
         msg_id = data.get("message_id") or str(uuid4())
         existing_ids = {m.message_id for m in self._messages[-100:]}
         if msg_id in existing_ids:
+            logger.debug("hop-debug: dedup skip msg_id=%s", msg_id)
             return
 
         snr = data.get("snr")
         rssi = data.get("rssi")
         path_len = data.get("path_len") or 0
         path_hops = data.get("path_hops", [])
+        logger.debug(
+            "hop-debug: storing message sender=%s path_len=%s path_hops=%s snr=%s rssi=%s",
+            sender_name, path_len, path_hops, snr, rssi,
+        )
         message = Message(
             message_id=msg_id,
             sender_id=sender_name,
