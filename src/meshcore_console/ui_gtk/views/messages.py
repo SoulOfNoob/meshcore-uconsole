@@ -110,7 +110,9 @@ class MessagesView(Gtk.Box):
         self._scroll_overlay.add_overlay(self._scroll_bottom_btn)
 
         self._is_at_bottom = True
-        self._scroll.get_vadjustment().connect("value-changed", self._on_scroll_value_changed)
+        _adj = self._scroll.get_vadjustment()
+        _adj.connect("value-changed", self._on_scroll_value_changed)
+        _adj.connect("changed", self._on_adj_bounds_changed)
 
         self._message_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self._message_box.set_margin_start(12)
@@ -231,6 +233,11 @@ class MessagesView(Gtk.Box):
         if at_bottom != self._is_at_bottom:
             self._is_at_bottom = at_bottom
             self._scroll_bottom_btn.set_visible(not at_bottom)
+
+    def _on_adj_bounds_changed(self, adj: Gtk.Adjustment) -> None:
+        """Called after layout when content height changes. Stay pinned to bottom."""
+        if self._is_at_bottom:
+            adj.set_value(adj.get_upper() - adj.get_page_size())
 
     def _on_scroll_to_bottom_clicked(self, _button: Gtk.Button) -> None:
         logger.debug("UI: scroll to bottom clicked")
