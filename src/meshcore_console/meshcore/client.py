@@ -440,6 +440,13 @@ class MeshcoreClient(MeshcoreService):
                         packet_hash = target.get("packet_hash")
                         if packet_hash:
                             self._packet_store.update_by_hash(packet_hash, updates)
+                    # Propagate path and signal info from the raw packet event into
+                    # the handler event so _process_message_event sees correct values.
+                    # The handler (GroupTextHandler) omits path_len/path_hops and
+                    # nests snr/rssi inside network_info rather than at the top level.
+                    for _field in ("path_len", "path_hops", "snr", "rssi"):
+                        if _field not in data and target.get(_field) is not None:
+                            data[_field] = target[_field]
 
             elif event_type == EventType.MESH_MESSAGE_NEW:
                 sender = data.get("sender_name") or data.get("peer_name")
@@ -451,6 +458,12 @@ class MeshcoreClient(MeshcoreService):
                         self._packet_store.update_by_hash(
                             packet_hash, {"sender_name": target["sender_name"]}
                         )
+                    # Propagate path and signal info from the raw packet event into
+                    # the handler event (TextMessageHandler hardcodes hops=1 in
+                    # network_info and omits path_len/path_hops entirely).
+                    for _field in ("path_len", "path_hops", "snr", "rssi"):
+                        if _field not in data and target.get(_field) is not None:
+                            data[_field] = target[_field]
 
     def _enrich_stored_sender_names(self, events: list[MeshEventDict]) -> None:
         """Enrich stored packet events with sender names from the peer registry."""
