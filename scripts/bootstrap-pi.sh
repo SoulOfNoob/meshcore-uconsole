@@ -46,7 +46,13 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-sudo raspi-config nonint do_spi 0 || true
+# --- SPI configuration ---
+# The LoRa radio module uses SPI1. Only dtoverlay=spi1-1cs is required.
+#
+# Do NOT run 'raspi-config nonint do_spi 0' and do NOT add dtparam=spi=on.
+# On the uConsole, SPI0 is used by the display driver. Enabling SPI0 as a
+# general-purpose bus (which both of the above do) blanks the screen and
+# the change persists across reboots.
 
 BOOT_CONFIG=""
 if [[ -f /boot/firmware/config.txt ]]; then
@@ -58,14 +64,17 @@ else
   exit 1
 fi
 
-if ! grep -q '^dtoverlay=spi1-1cs$' "$BOOT_CONFIG"; then
-  echo "Enabling SPI1 overlay (dtoverlay=spi1-1cs)"
-  echo 'dtoverlay=spi1-1cs' | sudo tee -a "$BOOT_CONFIG" >/dev/null
+# Remove dtparam=spi=on if a previous run of this script (or raspi-config)
+# left it behind — it disables the uConsole screen.
+if grep -q '^dtparam=spi=on' "$BOOT_CONFIG"; then
+  echo "Removing 'dtparam=spi=on' from $BOOT_CONFIG (breaks uConsole display on CM5/Trixie)..."
+  sudo sed -i '/^dtparam=spi=on/d' "$BOOT_CONFIG"
 fi
 
-if ! grep -q '^dtparam=spi=on$' "$BOOT_CONFIG"; then
-  echo "Enabling SPI dtparam (dtparam=spi=on)"
-  echo 'dtparam=spi=on' | sudo tee -a "$BOOT_CONFIG" >/dev/null
+# Enable SPI1 overlay for the LoRa radio module (AIO board).
+if ! grep -q '^dtoverlay=spi1-1cs' "$BOOT_CONFIG"; then
+  echo "Adding dtoverlay=spi1-1cs for LoRa radio module (SPI1)"
+  echo 'dtoverlay=spi1-1cs' | sudo tee -a "$BOOT_CONFIG" >/dev/null
 fi
 
 if systemctl list-unit-files | grep -q '^devterm-printer.service'; then
