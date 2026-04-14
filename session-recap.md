@@ -78,7 +78,7 @@ pyMC_core defaulted to `0.0, 0.0`. Fix: read `share_position` from settings, pre
 live GPS, fall back to `settings.latitude` / `settings.longitude`. Commit `070fd2e`.
 
 **Bug B — `create_gps_provider()` fell back to `MockGps` (San Francisco).**
-When no gpsd and no `/dev/ttyS0` were found, the production code returned `MockGps`,
+When no gpsd and no `/dev/ttyAMA0` were found, the production code returned `MockGps`,
 which has `has_fix()=True` and `get_location()` returning SF waypoints. Bug A's fix
 checked `if loc:` first — found SF — and used it, silently overriding settings.
 Fix: replaced the production fallback with `NullGps` (always returns `None`).
@@ -139,9 +139,9 @@ for keeping a list pinned to the bottom as content grows.
 ## GPS on the AIO board (not tested this session)
 
 The app supports the AIO board's GPS via `UConsoleGps` (`platform/gps.py`):
-- Serial: `/dev/ttyS0` at 9600 baud
+- Serial: `/dev/ttyAMA0` at 9600 baud
 - Enable pin: GPIO 27
-- Detection: `create_gps_provider()` checks for `/dev/ttyS0` before falling back to `NullGps`
+- Detection: `create_gps_provider()` checks for `/dev/ttyAMA0` before falling back to `NullGps`
 
 To enable:
 ```bash
@@ -153,11 +153,11 @@ sudo raspi-config nonint do_serial_cons 1
 # Grant serial access
 sudo usermod -aG dialout $USER
 # Reboot, then verify NMEA data
-timeout 5 cat /dev/ttyS0   # should print $GNGGA, $GNRMC lines
+timeout 5 cat /dev/ttyAMA0   # should print $GNGGA, $GNRMC lines
 ```
 
-If `/dev/ttyS0` exists on startup, `UConsoleGps` is used automatically. Look for
-`GPS: opened /dev/ttyS0 at 9600 baud` in logs. Satellite fix takes 1–5 minutes
+If `/dev/ttyAMA0` exists on startup, `UConsoleGps` is used automatically. Look for
+`GPS: opened /dev/ttyAMA0 at 9600 baud` in logs. Satellite fix takes 1–5 minutes
 outdoors.
 
 ---

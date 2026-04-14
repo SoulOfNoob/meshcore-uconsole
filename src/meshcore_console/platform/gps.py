@@ -67,12 +67,12 @@ class GpsProvider(Protocol):
 class UConsoleGps:
     """GPS provider for uConsole AIO board.
 
-    The AIO V2 board provides GPS via the Pi's UART at /dev/ttyS0.
+    The AIO V1 board provides GPS via the Pi's UART at /dev/ttyAMA0.
     GPIO 27 is used to enable/disable the GPS module.
     """
 
     GPIO_ENABLE_PIN = 27
-    SERIAL_PORT = "/dev/ttyS0"
+    SERIAL_PORT = "/dev/ttyAMA0"
     BAUD_RATE = 9600
 
     def __init__(self) -> None:
@@ -548,7 +548,7 @@ def create_gps_provider() -> GpsProvider:
     Priority:
     1. MESHCORE_MOCK=1 → MockGps
     2. gpsd reachable (unless MESHCORE_GPSD_DISABLE=1) → GpsdProvider
-    3. /dev/ttyS0 exists → UConsoleGps
+    3. /dev/ttyAMA0 exists → UConsoleGps
     4. Fallback → NullGps (returns None; callers use settings fixed position)
     """
     if os.environ.get("MESHCORE_MOCK", "0") == "1":
@@ -565,7 +565,7 @@ def create_gps_provider() -> GpsProvider:
             return GpsdProvider(host=host, port=port)
 
     # Check if we're on a Pi with GPS hardware
-    if Path("/dev/ttyS0").exists():
+    if Path("/dev/ttyAMA0").exists():
         return UConsoleGps()
 
     # No GPS hardware available — return null provider so callers fall back
