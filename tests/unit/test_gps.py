@@ -132,7 +132,7 @@ def test_create_gps_provider_respects_gpsd_disable() -> None:
         provider = create_gps_provider()
         # gpsd should not even be checked
         mock_avail.assert_not_called()
-        # Should fall through to mock since /dev/ttyS0 doesn't exist
+        # Should fall through to mock since /dev/ttyAMA0 doesn't exist
         from meshcore_console.mock.gps import MockGps
 
         assert isinstance(provider, MockGps)

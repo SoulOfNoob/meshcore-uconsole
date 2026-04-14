@@ -67,12 +67,12 @@ class GpsProvider(Protocol):
 class UConsoleGps:
     """GPS provider for uConsole AIO board.
 
-    The AIO V2 board provides GPS via the Pi's UART at /dev/ttyS0.
+    The AIO V1 board provides GPS via the Pi's UART at /dev/ttyAMA0.
     GPIO 27 is used to enable/disable the GPS module.
     """
 
     GPIO_ENABLE_PIN = 27
-    SERIAL_PORT = "/dev/ttyS0"
+    SERIAL_PORT = "/dev/ttyAMA0"
     BAUD_RATE = 9600
 
     def __init__(self) -> None:
@@ -513,14 +513,43 @@ def _gpsd_available(host: str = "127.0.0.1", port: int = 2947) -> bool:
         return False
 
 
+class NullGps:
+    """No-op GPS provider for systems without GPS hardware.
+
+    Returns None from get_location() so callers fall back to fixed
+    coordinates from settings rather than mock data.
+    """
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def get_location(self) -> tuple[float, float] | None:
+        return None
+
+    def set_callback(self, callback: Callable[[float, float], None] | None) -> None:
+        pass
+
+    def poll(self) -> bool:
+        return True
+
+    def get_last_error(self) -> str | None:
+        return None
+
+    def has_fix(self) -> bool:
+        return False
+
+
 def create_gps_provider() -> GpsProvider:
     """Create the appropriate GPS provider for the current environment.
 
     Priority:
     1. MESHCORE_MOCK=1 → MockGps
     2. gpsd reachable (unless MESHCORE_GPSD_DISABLE=1) → GpsdProvider
-    3. /dev/ttyS0 exists → UConsoleGps
-    4. Fallback → MockGps
+    3. /dev/ttyAMA0 exists → UConsoleGps
+    4. Fallback → NullGps (returns None; callers use settings fixed position)
     """
     if os.environ.get("MESHCORE_MOCK", "0") == "1":
         from meshcore_console.mock import MockGps
@@ -536,10 +565,10 @@ def create_gps_provider() -> GpsProvider:
             return GpsdProvider(host=host, port=port)
 
     # Check if we're on a Pi with GPS hardware
-    if Path("/dev/ttyS0").exists():
+    if Path("/dev/ttyAMA0").exists():
         return UConsoleGps()
 
-    # Fall back to mock
-    from meshcore_console.mock import MockGps
-
-    return MockGps()
+    # No GPS hardware available — return null provider so callers fall back
+    # to fixed coordinates from settings rather than mock data.
+    logger.debug("GPS: no hardware detected, using NullGps")
+    return NullGps()
