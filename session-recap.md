@@ -1,149 +1,102 @@
-# Session Recap — April 2026
+# Session Recap — April 2026 (Session 2)
 
 ## Branch
 
-`claude/fix-hop-count-display-mUIrw` — pushed, not yet merged.
+Original: `claude/fix-hop-count-display-mUIrw` — all fixes combined, for local use.
+
+Upstream PR branches (each independently mergeable into `main`):
+
+| Branch | Upstream issue |
+|--------|---------------|
+| `claude/fix-hop-count-issue52` | #52 |
+| `claude/fix-spi-display-issue53` | #53 |
+| `claude/fix-message-autoscroll` | — |
+| `claude/fix-fallback-position-issue51` | #51 |
+| `claude/feat-gps-settings-ui` | — |
+
+---
 
 ## Hardware context
 
 Raspberry Pi CM5 Lite, uConsole form factor, Debian Trixie.
-HackerGadgets AIO LoRa board (SPI1, no GPS module connected during this session).
-App launched via `./scripts/run-gtk-pi.sh` from git checkout alongside an apt-installed version.
+HackerGadgets AIO LoRa v1 board (SPI1, GPS on `/dev/ttyAMA0`, no fix acquired this session).
+App launched via `./scripts/run-gtk-pi.sh`.
 
 ---
 
-## Bugs fixed
+## Changes this session
 
-### 1. Hop count always showing "Direct" (issue: hops display)
+### 1. GPS serial port corrected to `/dev/ttyAMA0`
 
-**Root cause:** `GroupTextHandler` in pyMC_core publishes the decrypted
-`mesh.channel.message.new` event without `path_len` / `path_hops`. Those fields only
-exist on the earlier raw `packet` event. The adapter already correlated these two
-events to enrich sender names (`_enrich_sender_names` in `meshcore/client.py`) but
-did not copy the path and signal fields across.
+The AIO v1 board's GPS module is wired to the primary UART (`/dev/ttyAMA0`), not the
+mini-UART (`/dev/ttyS0`). Both `UConsoleGps.SERIAL_PORT` and the path check in
+`create_gps_provider()` were using `/dev/ttyS0`.
 
-**Fix:** Extended the correlation block to also propagate `path_len`, `path_hops`,
-`snr`, and `rssi` from the raw packet event into the handler event before it is
-processed and stored. Commit `7909e2e`.
-
-**Important nuance confirmed on hardware:** "Direct" is sometimes *correct*. In
-MeshCore flood routing every node receives whichever physical copy reaches it first.
-If the sender was physically close (RSSI ≈ −35 dBm) the uConsole received the
-direct copy; a remote iPhone received the same logical message via 8 hops. Both
-readings are accurate.
-
-**DB caveat:** `INSERT OR IGNORE` prevents updating old records. Delete
-`~/.local/share/meshcore-console/meshcore.db` to start fresh; all new messages
-will show correct hop data.
+**Fix:** Changed both to `/dev/ttyAMA0`. Commit `a20efe8` on the original branch.
 
 ---
 
-### 2. Bootstrap script blanking the uConsole display
+### 2. GPS serial device configurable in Hardware settings
 
-**Root cause:** `scripts/bootstrap-pi.sh` called `raspi-config nonint do_spi 0`
-which appended `dtparam=spi=on` to `/boot/firmware/config.txt`. On the CM5 uConsole,
-SPI0 is used by the DSI display driver; enabling it conflicts and blanks the screen.
+**File:** `src/meshcore_console/meshcore/settings.py` — new field `gps_serial_port: str = "/dev/ttyAMA0"`
 
-**Fix:** Removed the `raspi-config` call. The AIO LoRa board only needs
-`dtoverlay=spi1-1cs` (SPI1). Added an auto-remediation `sed` step that strips any
-pre-existing `dtparam=spi=on` line for users who ran the old script. Commit `bd6d973`.
+**Architecture changes:**
+- `UConsoleGps.__init__(serial_port: str = "/dev/ttyAMA0")` — stores as `self._serial_port`; `start()` uses it
+- `create_gps_provider(serial_port: str = "/dev/ttyAMA0")` — checks `Path(serial_port).exists()`, passes to `UConsoleGps`
+- `MeshcoreClient.__init__` now loads settings **before** creating the GPS provider so `self._settings.gps_serial_port` is available
+- Settings UI: "GPS Device" text entry row at the bottom of the Hardware panel, saved and reloaded with all other hardware settings
 
----
+Requires an app restart to apply (same as SPI/GPIO pin settings).
 
-### 3. Messages not auto-scrolling to new incoming messages
-
-**Root cause:** `GLib.idle_add(scroll_to_bottom)` was called from `_poll_messages()`
-immediately after appending the new widget. The call fired *before* GTK's layout
-pass had updated `adj.get_upper()`, so the scroll landed at the old bottom.
-
-**Fix:** Connected to `Gtk.Adjustment::changed` signal
-(`ui_gtk/views/messages.py`), which fires after layout has updated `upper`. The
-handler schedules `scroll_to_bottom` via `GLib.idle_add` so the scroll executes
-with the final content height.
-
-A second issue emerged: calling `adj.set_value()` directly inside the `"changed"`
-callback (during layout) used a preliminary widget height, clipping the last
-message. Fixed by using `GLib.idle_add` inside the handler instead of a direct
-set. Commits `9eee284`, `85f14f9`.
+**Branch:** `claude/feat-gps-settings-ui`, commits `a20efe8` + `e00f2d2`
 
 ---
 
-### 4. Fixed position in settings not applied to adverts, telemetry, or map (issue #51)
+### 3. GPS status overlay on the map page
 
-Three layered bugs, all in `meshcore/client.py` and `platform/gps.py`:
+A compact status card appears in the **top-right corner** of the map, on top of the
+tile layer. It updates every 2 seconds on the existing GPS poll timer.
 
-**Bug A — `send_advert()` ignored lat/lon entirely.**
-Called `session.send_advert(name=name, route_type=route_type)` with no coordinates;
-pyMC_core defaulted to `0.0, 0.0`. Fix: read `share_position` from settings, prefer
-live GPS, fall back to `settings.latitude` / `settings.longitude`. Commit `070fd2e`.
-
-**Bug B — `create_gps_provider()` fell back to `MockGps` (San Francisco).**
-When no gpsd and no `/dev/ttyAMA0` were found, the production code returned `MockGps`,
-which has `has_fix()=True` and `get_location()` returning SF waypoints. Bug A's fix
-checked `if loc:` first — found SF — and used it, silently overriding settings.
-Fix: replaced the production fallback with `NullGps` (always returns `None`).
-`MockGps` is now only used in explicit mock mode (`MESHCORE_MOCK=1`). Commit `8e51e9d`.
-
-**Bug C — `get_device_location()` only read from GPS provider.**
-Map marker disappeared; "Center on device" showed "GPS acquiring satellites...".
-Fix: same GPS → settings fallback as `send_advert()`. Commit `26be2c4`.
-
-**Consistency fix:** `send_advert()` and `_get_local_telemetry()` were missing the
-`(lat != 0.0 or lon != 0.0)` guard that `get_device_location()` already had. Without
-it, unconfigured users broadcast `(0.0, 0.0)`, placing their node in the Gulf of
-Guinea. All three callsites now treat `(0.0, 0.0)` as "not set". Commit `7911522`.
-
----
-
-## Key technical findings
-
-### Version conflict (apt vs git)
-
-The user had both the apt-installed package and the git checkout. Both use the same
-SQLite database at `~/.local/share/meshcore-console/meshcore.db`. `INSERT OR IGNORE`
-means whichever process stores a message first "wins" — the other silently skips it.
-`./scripts/run-gtk-pi.sh` sets `PYTHONPATH=src` and uses `.venv/bin/python`, which
-should load from source, but stale DB records from the apt version can persist.
-
-If both processes run simultaneously (e.g. apt service auto-started), they race.
-Check: `ps aux | grep meshcore`. Disable the apt service if found:
-```bash
-sudo systemctl stop meshcore-console
-sudo systemctl disable meshcore-console
+```
+GPS
+Found  Yes      <- green if hardware detected (not NullGps)
+Fix    No       <- orange while acquiring, green when fixed
+Sats   7        <- satellite count from $GNGGA sentences (UConsoleGps only)
+Pos    52.1234, 6.4321  <- lat/lon to 4 dp, or -- if no fix
 ```
 
-### Log export captures full DEBUG output
+Color coding: green = ok (`@mc_accent`), orange = warning (`@mc_warn`), muted = unavailable.
 
-The app writes DEBUG-level logs to
-`~/.local/state/meshcore-uconsole/app.log` (rotating, 1 MB × 3). The UI's "Export
-Logs" function reads this file. Absence of a log line from a module is definitive
-proof that the code path did not execute.
+**Protocol additions required:**
 
-### pyMC_core event timing
+| Symbol | Location | Notes |
+|--------|----------|-------|
+| `GpsProvider.get_num_satellites() -> int` | `platform/gps.py` | `UConsoleGps` reads `_last_num_sats` from GGA; `GpsdProvider` and `NullGps` return 0 |
+| `MeshcoreService.has_gps_hardware() -> bool` | `core/services.py` | True if provider is not `NullGps` |
+| `MeshcoreService.get_gps_num_satellites() -> int` | `core/services.py` | Forwards to provider |
+| `MockGps.get_num_satellites() -> int` | `mock/gps.py` | Returns 8 when running |
 
-`GroupTextHandler` uses `event_service.publish_sync()` which internally calls
-`asyncio.create_task()`. This means `mesh.channel.message.new` arrives
-*asynchronously* after the raw `packet` callback. The correlation queue
-`_unenriched_grp` (a `deque`) is FIFO and relies on messages arriving in order.
-For simultaneous messages this can mis-correlate — not fixed in this session.
-
-### `"changed"` vs `"value-changed"` on `Gtk.Adjustment`
-
-- `"value-changed"` fires when the *scroll position* changes (user scrolling).
-- `"changed"` fires when `upper` / `lower` / `page-size` change (content resize).
-Connecting auto-scroll to `"changed"` + `GLib.idle_add` is the correct GTK4 pattern
-for keeping a list pinned to the bottom as content grows.
+**Branch:** `claude/feat-gps-settings-ui`, commit `0714ffb`
 
 ---
 
-## GPS on the AIO board (not tested this session)
+## GPS on the AIO v1 board
 
-The app supports the AIO board's GPS via `UConsoleGps` (`platform/gps.py`):
-- Serial: `/dev/ttyAMA0` at 9600 baud
+The app detects GPS automatically at startup via `create_gps_provider()`:
+
+Priority:
+1. `MESHCORE_MOCK=1` -> MockGps
+2. gpsd reachable -> GpsdProvider
+3. Configured serial device (`gps_serial_port` setting) exists -> UConsoleGps
+4. Fallback -> NullGps (returns `None`; callers use fixed coordinates from settings)
+
+**`UConsoleGps` specifics:**
+- Serial: `/dev/ttyAMA0` at 9600 baud (default; configurable in Settings > Hardware > GPS Device)
 - Enable pin: GPIO 27
-- Detection: `create_gps_provider()` checks for `/dev/ttyAMA0` before falling back to `NullGps`
+- NMEA parsing: `$GNGGA` (position + fix quality + sat count), `$GNRMC` (position backup)
+- Satellite count exposed via `get_num_satellites()` -- shown in map overlay
 
-To enable:
+**To enable the physical GPS:**
 ```bash
 # Enable UART hardware
 echo 'enable_uart=1' | sudo tee -a /boot/firmware/config.txt
@@ -156,32 +109,53 @@ sudo usermod -aG dialout $USER
 timeout 5 cat /dev/ttyAMA0   # should print $GNGGA, $GNRMC lines
 ```
 
-If `/dev/ttyAMA0` exists on startup, `UConsoleGps` is used automatically. Look for
-`GPS: opened /dev/ttyAMA0 at 9600 baud` in logs. Satellite fix takes 1–5 minutes
-outdoors.
+Look for `GPS: opened /dev/ttyAMA0 at 9600 baud` in logs. Satellite fix takes 1-5 minutes outdoors.
+
+---
+
+## Branch separation details
+
+The original branch had all fixes squashed together. This session split them into
+5 independent branches for upstream PRs. Key decisions:
+
+- **CHANGELOG entries** were written fresh per branch (the original had them all in one commit)
+- **Debug commits** `f51b4af` + `7d84c95` (add/remove hop-count tracing) were dropped -- they cancel out
+- **`uv.lock`** update `0b1f913` was dropped from all upstream branches (unrelated to fixes)
+- **`session-recap.md`** was excluded from all upstream branches
+- **`e00f2d2`'s `MockGps->NullGps` test assertion change** belongs in `fix-fallback-position` (where `NullGps` is introduced), NOT in `feat-gps-settings-ui` (which keeps `MockGps` as the fallback on `main`)
+
+No conflicts between branches when merged into `main` in any order -- they touch non-overlapping
+functions within the same files (`client.py`, `gps.py`).
+
+---
+
+## Files changed per branch
+
+| File | hop-count | spi | autoscroll | fallback-pos | gps-settings |
+|------|:---------:|:---:|:----------:|:------------:|:------------:|
+| `scripts/bootstrap-pi.sh` | | v | | | |
+| `src/meshcore_console/meshcore/client.py` | v | | | v | v |
+| `src/meshcore_console/meshcore/settings.py` | | | | | v |
+| `src/meshcore_console/platform/gps.py` | | | | v | v |
+| `src/meshcore_console/core/services.py` | | | | | v |
+| `src/meshcore_console/mock/client.py` | | | | | v |
+| `src/meshcore_console/mock/gps.py` | | | | | v |
+| `src/meshcore_console/ui_gtk/views/messages.py` | | | v | | |
+| `src/meshcore_console/ui_gtk/views/settings.py` | | | | | v |
+| `src/meshcore_console/ui_gtk/views/map.py` | | | | | v |
+| `src/meshcore_console/ui_gtk/resources/app.css` | | | | | v |
+| `tests/unit/test_gps.py` | | | | v | v |
+| `CHANGELOG.md` | v | v | v | v | |
 
 ---
 
 ## What was NOT done / pending
 
-- **Tests:** `NullGps` has no unit tests. The `cayennelpp` dependency is missing
-  from the dev environment, so `uv run pytest` fails entirely. Pre-existing issue.
-- **Queue mis-correlation:** If two group messages arrive nearly simultaneously,
-  `_unenriched_grp.popleft()` may pair the wrong packet with a message event,
-  producing incorrect hop data for one of them.
-- **INSERT OR REPLACE for path updates:** Existing DB records with `path_len=0`
-  cannot be corrected without deleting the DB. A future improvement could upsert
-  path data if the incoming message has better data than the stored record.
-- **No PR created.** All work is on `claude/fix-hop-count-display-mUIrw`.
-
----
-
-## Files changed
-
-| File | Change |
-|------|--------|
-| `src/meshcore_console/meshcore/client.py` | `send_advert`, `_get_local_telemetry`, `get_device_location` — GPS/settings fallback |
-| `src/meshcore_console/platform/gps.py` | Added `NullGps`; changed production fallback |
-| `src/meshcore_console/ui_gtk/views/messages.py` | Auto-scroll via `Gtk.Adjustment::changed` |
-| `scripts/bootstrap-pi.sh` | Removed `dtparam=spi=on`; added remediation |
-| `CHANGELOG.md` | New `Unreleased` section documenting all four fixes |
+- **GPS satellite count for `GpsdProvider`:** TPV records from gpsd do not include sat count.
+  SKY records do -- adding a SKY-stream parser to `GpsdProvider` would expose this.
+- **Queue mis-correlation in `_unenriched_grp`:** If two group messages arrive nearly
+  simultaneously, `popleft()` may pair the wrong packet with a message event. Still unresolved.
+- **`INSERT OR REPLACE` for path data:** Existing DB records with `path_len=0` cannot be
+  corrected without deleting the DB.
+- **No unit tests for `NullGps`** or the new GPS callsite fallback logic in `client.py`.
+- **No PRs created.** All branches pushed; PRs must be opened manually against upstream.
