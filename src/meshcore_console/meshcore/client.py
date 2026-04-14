@@ -321,7 +321,14 @@ class MeshcoreClient(MeshcoreService):
     def send_advert(self, name: str | None = None, *, route_type: str = "flood") -> SendResultDict:
         if not self._connected:
             self.connect()
-        result = self._run_async(self._session.send_advert(name=name, route_type=route_type))
+        lat, lon = 0.0, 0.0
+        if self._settings.share_position:
+            loc = self._gps_provider.get_location()
+            if loc:
+                lat, lon = loc[0], loc[1]
+            else:
+                lat, lon = self._settings.latitude, self._settings.longitude
+        result = self._run_async(self._session.send_advert(name=name, lat=lat, lon=lon, route_type=route_type))
         self._append_event(
             {
                 "type": EventType.ADVERT_SENT,
@@ -827,10 +834,16 @@ class MeshcoreClient(MeshcoreService):
     def _get_local_telemetry(self) -> dict:
         """Provide local telemetry data for inbound requests."""
         loc = self._gps_provider.get_location()
+        if loc:
+            lat, lon = loc[0], loc[1]
+        elif self._settings.share_position:
+            lat, lon = self._settings.latitude, self._settings.longitude
+        else:
+            lat, lon = None, None
         return {
             "allow": self._settings.allow_telemetry,
-            "lat": loc[0] if loc else None,
-            "lon": loc[1] if loc else None,
+            "lat": lat,
+            "lon": lon,
         }
 
     def _seed_contact_book(self) -> None:

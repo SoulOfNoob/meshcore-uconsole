@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fix
+
+#### Hop count always showing "Direct" in message details
+
+Group channel messages always displayed **Hops: Direct** in the message details
+panel, even for messages that arrived via multiple repeaters.
+
+**Root cause:** MeshCore's `GroupTextHandler` publishes the decrypted message event
+(`mesh.channel.message.new`) without the raw packet fields `path_len` and
+`path_hops`. Those fields are only present on the earlier `packet` event that fires
+before decryption. The adapter already correlated these two events to enrich sender
+names, but it did not copy the path and signal fields across.
+
+**Fix:** Extended the existing packet↔handler correlation in `_enrich_sender_names()`
+to also propagate `path_len`, `path_hops`, `snr`, and `rssi` from the raw packet
+event into the handler event before it is processed and stored.
+
+> **Note:** Messages stored before this fix have `path_len = 0` and cannot be
+> updated in-place (`INSERT OR IGNORE` prevents overwrites). Delete
+> `~/.local/share/meshcore-console/meshcore.db` to start fresh; all new messages
+> will display correct hop data immediately.
+
+---
+
+#### Bootstrap script blanking the uConsole display
+
+Running `scripts/bootstrap-pi.sh` on a CM5 uConsole caused the screen to go blank
+after reboot. The script previously called `raspi-config nonint do_spi 0` which
+appended `dtparam=spi=on` to `/boot/firmware/config.txt`. On the uConsole, SPI0 is
+used by the DSI display driver; enabling it via `dtparam=spi=on` conflicts with the
+display and blanks it.
+
+**Fix:** Removed the `raspi-config` SPI call and the `dtparam=spi=on` append. The
+HackerGadgets AIO LoRa board only needs `dtoverlay=spi1-1cs` (SPI1, not SPI0). The
+script now also auto-remediates installations broken by a previous run by stripping
+any existing `dtparam=spi=on` line from the boot config.
+
+---
+
+#### Messages view not auto-scrolling to show new incoming messages
+
+When a channel was open and a new message arrived, the view did not scroll down to
+show it.
+
+**Root cause:** The `GLib.idle_add(scroll_to_bottom)` call fired before GTK's layout
+pass had updated the adjustment's `upper` bound for the newly added widget. The
+scroll landed at the old bottom rather than the new one.
+
+**Fix:** Connected to the `Gtk.Adjustment` `"changed"` signal, which fires after GTK
+has updated `upper` during layout. The handler schedules `scroll_to_bottom` via
+`GLib.idle_add` so the scroll executes after the complete layout pass, when
+`adj.get_upper()` reflects the final content height.
+
+---
+
+#### Fixed position in settings not applied to adverts or telemetry responses
+
+Setting a latitude/longitude under *Public Info* in Settings and enabling
+*Share GPS Position* had no effect. Sent adverts always contained `lat=0.0, lon=0.0`
+(i.e. no location), and telemetry responses likewise returned no location when no
+hardware GPS device was connected.
+
+**Root cause:** `send_advert()` called `session.send_advert()` without forwarding
+`lat`/`lon`, so pyMC_core used its parameter defaults of `0.0, 0.0`. Similarly,
+`_get_local_telemetry()` only read from the GPS hardware provider and had no fallback
+to the values stored in settings.
+
+**Fix:** Both methods now respect `settings.share_position`:
+
+- When enabled: prefer a live GPS fix; if unavailable, fall back to
+  `settings.latitude` / `settings.longitude`.
+- When disabled: send no location (`0.0, 0.0` / `None`).
+
+---
+
 ## v1.9.0 (2026-03-08)
 
 ### Feat
