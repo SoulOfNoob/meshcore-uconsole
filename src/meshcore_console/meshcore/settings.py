@@ -34,6 +34,7 @@ class MeshcoreSettings:
     irq_pin: int = 26
     txen_pin: int = -1
     rxen_pin: int = -1
+    gps_serial_port: str = "/dev/ttyAMA0"
     is_waveshare: bool = False
     use_dio2_rf: bool = True
     use_dio3_tcxo: bool = True

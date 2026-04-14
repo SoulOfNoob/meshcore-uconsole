@@ -72,10 +72,11 @@ class UConsoleGps:
     """
 
     GPIO_ENABLE_PIN = 27
-    SERIAL_PORT = "/dev/ttyAMA0"
+    SERIAL_PORT = "/dev/ttyAMA0"  # default; overridable via settings
     BAUD_RATE = 9600
 
-    def __init__(self) -> None:
+    def __init__(self, serial_port: str = "/dev/ttyAMA0") -> None:
+        self._serial_port = serial_port
         self._callback: Callable[[float, float], None] | None = None
         self._error_callback: Callable[[str], None] | None = None
         self._running = False
@@ -114,17 +115,17 @@ class UConsoleGps:
             import serial  # type: ignore[import-not-found]
 
             self._serial = serial.Serial(
-                self.SERIAL_PORT,
+                self._serial_port,
                 self.BAUD_RATE,
                 timeout=1.0,
             )
             self._running = True
-            logger.debug("GPS: opened %s at %d baud", self.SERIAL_PORT, self.BAUD_RATE)
+            logger.debug("GPS: opened %s at %d baud", self._serial_port, self.BAUD_RATE)
         except ImportError:
             self._report_error("pyserial not installed - GPS unavailable")
         except PermissionError:
             self._report_error(
-                f"Permission denied on {self.SERIAL_PORT} - add user to dialout group"
+                f"Permission denied on {self._serial_port} - add user to dialout group"
             )
         except OSError as e:
             self._report_error(f"Serial port error: {e}")
@@ -542,13 +543,13 @@ class NullGps:
         return False
 
 
-def create_gps_provider() -> GpsProvider:
+def create_gps_provider(serial_port: str = "/dev/ttyAMA0") -> GpsProvider:
     """Create the appropriate GPS provider for the current environment.
 
     Priority:
     1. MESHCORE_MOCK=1 → MockGps
     2. gpsd reachable (unless MESHCORE_GPSD_DISABLE=1) → GpsdProvider
-    3. /dev/ttyAMA0 exists → UConsoleGps
+    3. serial_port device exists → UConsoleGps(serial_port)
     4. Fallback → NullGps (returns None; callers use settings fixed position)
     """
     if os.environ.get("MESHCORE_MOCK", "0") == "1":
@@ -565,8 +566,9 @@ def create_gps_provider() -> GpsProvider:
             return GpsdProvider(host=host, port=port)
 
     # Check if we're on a Pi with GPS hardware
-    if Path("/dev/ttyAMA0").exists():
-        return UConsoleGps()
+    if Path(serial_port).exists():
+        logger.info("GPS: serial device %s found, using UConsoleGps", serial_port)
+        return UConsoleGps(serial_port)
 
     # No GPS hardware available — return null provider so callers fall back
     # to fixed coordinates from settings rather than mock data.
