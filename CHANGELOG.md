@@ -74,11 +74,16 @@ hardware GPS device was connected.
 `_get_local_telemetry()` only read from the GPS hardware provider and had no fallback
 to the values stored in settings.
 
-**Fix:** Both methods now respect `settings.share_position`:
+**Fix** (`meshcore/client.py`, `platform/gps.py`):
 
-- When enabled: prefer a live GPS fix; if unavailable, fall back to
-  `settings.latitude` / `settings.longitude`.
-- When disabled: send no location (`0.0, 0.0` / `None`).
+- `send_advert()` and `_get_local_telemetry()` now respect `settings.share_position`:
+  when enabled, prefer a live GPS fix; if unavailable, fall back to
+  `settings.latitude` / `settings.longitude`; when disabled, send no location.
+- `create_gps_provider()` previously fell back to `MockGps` (San Francisco
+  waypoints) when no GPS hardware was detected. This caused mock SF coordinates to
+  be treated as a live fix, silently overriding the settings position. The fallback
+  is now `NullGps`, which returns `None` so callers correctly use the
+  settings-configured fixed position.
 
 ---
 
