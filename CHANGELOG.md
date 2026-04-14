@@ -187,3 +187,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Don't land under 'Internet'
 - **deb**: Update to libgpiod3
+
+## Unreleased
+
+### Fix
+
+#### Bootstrap script blanking the uConsole display
+
+Running `scripts/bootstrap-pi.sh` on a CM5 uConsole caused the screen to go blank
+after reboot. The script previously called `raspi-config nonint do_spi 0` which
+appended `dtparam=spi=on` to `/boot/firmware/config.txt`. On the uConsole, SPI0 is
+used by the DSI display driver; enabling it via `dtparam=spi=on` conflicts with the
+display and blanks it.
+
+**Fix:** Removed the `raspi-config` SPI call and the `dtparam=spi=on` append. The
+HackerGadgets AIO LoRa board only needs `dtoverlay=spi1-1cs` (SPI1, not SPI0). The
+script now also auto-remediates installations broken by a previous run by stripping
+any existing `dtparam=spi=on` line from the boot config.
+
