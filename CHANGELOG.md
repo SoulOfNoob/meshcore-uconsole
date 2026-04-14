@@ -187,3 +187,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Don't land under 'Internet'
 - **deb**: Update to libgpiod3
+
+## Unreleased
+
+### Fix
+
+#### Messages view not auto-scrolling to show new incoming messages
+
+When a channel was open and a new message arrived, the view did not scroll down to
+show it.
+
+**Root cause:** The `GLib.idle_add(scroll_to_bottom)` call fired before GTK's layout
+pass had updated the adjustment's `upper` bound for the newly added widget. The
+scroll landed at the old bottom rather than the new one.
+
+**Fix:** Connected to the `Gtk.Adjustment` `"changed"` signal, which fires after GTK
+has updated `upper` during layout. The handler schedules `scroll_to_bottom` via
+`GLib.idle_add` so the scroll executes after the complete layout pass, when
+`adj.get_upper()` reflects the final content height.
+
