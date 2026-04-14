@@ -784,6 +784,14 @@ class MeshcoreClient(MeshcoreService):
         """Return True if GPS has acquired a satellite fix."""
         return self._gps_provider.has_fix()
 
+    def has_gps_hardware(self) -> bool:
+        from meshcore_console.platform.gps import NullGps
+
+        return not isinstance(self._gps_provider, NullGps)
+
+    def get_gps_num_satellites(self) -> int:
+        return self._gps_provider.get_num_satellites()
+
     def set_favorite(self, peer_id: str, favorite: bool) -> None:
         """Toggle the favorite flag on a peer."""
         for peer in self._peers.values():
