@@ -85,6 +85,14 @@ class MeshcoreService(Protocol):
         """Return True if GPS has acquired a satellite fix."""
         ...
 
+    def has_gps_hardware(self) -> bool:
+        """Return True if a real GPS device is in use (not NullGps)."""
+        ...
+
+    def get_gps_num_satellites(self) -> int:
+        """Return the number of satellites in the current fix (0 if no fix/hardware)."""
+        ...
+
     def set_favorite(self, peer_id: str, favorite: bool) -> None:
         """Toggle the favorite flag on a peer."""
         ...

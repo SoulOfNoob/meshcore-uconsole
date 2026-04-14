@@ -227,6 +227,12 @@ class MockMeshcoreClient(MeshcoreService):
         """Return True if GPS has acquired a fix (always True for mock)."""
         return True
 
+    def has_gps_hardware(self) -> bool:
+        return True
+
+    def get_gps_num_satellites(self) -> int:
+        return self._gps_provider.get_num_satellites()
+
     def set_favorite(self, peer_id: str, favorite: bool) -> None:
         """Toggle the favorite flag on a peer."""
         for peer in self._peers.values():

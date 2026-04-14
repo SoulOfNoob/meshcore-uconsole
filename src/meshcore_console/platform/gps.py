@@ -63,6 +63,10 @@ class GpsProvider(Protocol):
         """Return True if GPS has acquired a satellite fix."""
         ...
 
+    def get_num_satellites(self) -> int:
+        """Return the number of satellites used in the current fix (0 if no fix)."""
+        ...
+
 
 class UConsoleGps:
     """GPS provider for uConsole AIO board.
@@ -173,6 +177,10 @@ class UConsoleGps:
     def has_fix(self) -> bool:
         """Return True if GPS has acquired a fix."""
         return self._has_fix
+
+    def get_num_satellites(self) -> int:
+        """Return number of satellites used in the current fix."""
+        return self._last_num_sats
 
     def _report_error(self, message: str) -> None:
         """Report an error via callback and store it."""
@@ -455,6 +463,9 @@ class GpsdProvider:
     def has_fix(self) -> bool:
         return self._has_fix
 
+    def get_num_satellites(self) -> int:
+        return 0  # TPV records don't include satellite count
+
     def _update_location(self, lat: float, lon: float) -> None:
         if lat == 0.0 and lon == 0.0:
             return
@@ -541,6 +552,9 @@ class NullGps:
 
     def has_fix(self) -> bool:
         return False
+
+    def get_num_satellites(self) -> int:
+        return 0
 
 
 def create_gps_provider(serial_port: str = "/dev/ttyAMA0") -> GpsProvider:

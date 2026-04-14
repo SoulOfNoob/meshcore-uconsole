@@ -63,6 +63,10 @@ class MockGps:
         """Mock GPS always has a fix when running."""
         return self._running
 
+    def get_num_satellites(self) -> int:
+        """Simulate a fixed satellite count when running."""
+        return 8 if self._running else 0
+
     def set_positions(self, positions: list[tuple[float, float]]) -> None:
         """Set custom positions for testing."""
         self._positions = list(positions)

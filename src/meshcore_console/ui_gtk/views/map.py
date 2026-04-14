@@ -41,6 +41,15 @@ from meshcore_console.ui_gtk.widgets import DetailRow, EmptyState
 CARTO_DARK_URL = "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
 OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 
+_GPS_CSS_CLASSES = ("gps-ok", "gps-warn", "gps-muted")
+
+
+def _set_gps_class(label: Gtk.Label, state: str) -> None:
+    """Switch a label between gps-ok / gps-warn / gps-muted CSS classes."""
+    for cls in _GPS_CSS_CLASSES:
+        label.remove_css_class(cls)
+    label.add_css_class(f"gps-{state}")
+
 
 class MapView(Gtk.Box):
     """Map view with peer markers and details panel."""
@@ -58,6 +67,11 @@ class MapView(Gtk.Box):
         self._shown_gps_errors: set[str] = set()  # Track shown errors to avoid repeats
         self._following = False  # Whether map follows device location
         self._programmatic_move = False  # Suppress follow-disable during go_to
+        # GPS status overlay labels (set by _build_gps_status_overlay)
+        self._gps_found_val: Gtk.Label | None = None
+        self._gps_fix_val: Gtk.Label | None = None
+        self._gps_sats_val: Gtk.Label | None = None
+        self._gps_pos_val: Gtk.Label | None = None
 
         if not SHUMATE_AVAILABLE:
             self._build_fallback_ui()
@@ -247,6 +261,86 @@ class MapView(Gtk.Box):
             mock_label.set_margin_top(12)
             overlay.add_overlay(mock_label)
 
+        # GPS status overlay in top-right
+        self._gps_status_box = self._build_gps_status_overlay()
+        self._gps_status_box.set_halign(Gtk.Align.END)
+        self._gps_status_box.set_valign(Gtk.Align.START)
+        self._gps_status_box.set_margin_end(12)
+        self._gps_status_box.set_margin_top(12)
+        overlay.add_overlay(self._gps_status_box)
+
+    def _build_gps_status_overlay(self) -> Gtk.Box:
+        """Build the GPS status info box shown in the top-right map corner."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        box.add_css_class("map-gps-status")
+
+        title = Gtk.Label(label="GPS")
+        title.add_css_class("map-gps-status-title")
+        title.set_halign(Gtk.Align.START)
+        box.append(title)
+
+        grid = Gtk.Grid()
+        grid.set_row_spacing(2)
+        grid.set_column_spacing(8)
+
+        def _row_label(text: str) -> Gtk.Label:
+            lbl = Gtk.Label(label=text)
+            lbl.add_css_class("gps-muted")
+            lbl.set_halign(Gtk.Align.END)
+            return lbl
+
+        def _val_label() -> Gtk.Label:
+            lbl = Gtk.Label(label="—")
+            lbl.set_halign(Gtk.Align.START)
+            return lbl
+
+        self._gps_found_val = _val_label()
+        self._gps_fix_val = _val_label()
+        self._gps_sats_val = _val_label()
+        self._gps_pos_val = _val_label()
+
+        grid.attach(_row_label("Found"), 0, 0, 1, 1)
+        grid.attach(self._gps_found_val, 1, 0, 1, 1)
+        grid.attach(_row_label("Fix"), 0, 1, 1, 1)
+        grid.attach(self._gps_fix_val, 1, 1, 1, 1)
+        grid.attach(_row_label("Sats"), 0, 2, 1, 1)
+        grid.attach(self._gps_sats_val, 1, 2, 1, 1)
+        grid.attach(_row_label("Pos"), 0, 3, 1, 1)
+        grid.attach(self._gps_pos_val, 1, 3, 1, 1)
+
+        box.append(grid)
+        return box
+
+    def _update_gps_status_overlay(self) -> None:
+        """Refresh the GPS status overlay labels."""
+        if self._gps_found_val is None:
+            return
+        has_hw = self._service.has_gps_hardware()
+        has_fix = self._service.has_gps_fix()
+        num_sats = self._service.get_gps_num_satellites()
+        location = self._service.get_device_location()
+
+        # Found
+        self._gps_found_val.set_text("Yes" if has_hw else "No")
+        _set_gps_class(self._gps_found_val, "ok" if has_hw else "muted")
+
+        # Fix
+        self._gps_fix_val.set_text("Yes" if has_fix else "No")
+        _set_gps_class(self._gps_fix_val, "ok" if has_fix else ("warn" if has_hw else "muted"))
+
+        # Satellites
+        self._gps_sats_val.set_text(str(num_sats) if has_hw else "—")
+        _set_gps_class(self._gps_sats_val, "ok" if num_sats > 0 else "muted")
+
+        # Position
+        if location:
+            lat, lon = location
+            self._gps_pos_val.set_text(f"{lat:.4f}, {lon:.4f}")
+            _set_gps_class(self._gps_pos_val, "ok")
+        else:
+            self._gps_pos_val.set_text("—")
+            _set_gps_class(self._gps_pos_val, "muted")
+
     def _on_zoom_in(self, _button: Gtk.Button) -> None:
         """Zoom in on the map."""
         logger.debug("UI: map zoom in")
@@ -331,6 +425,7 @@ class MapView(Gtk.Box):
         self._service.poll_gps()
         self._check_gps_status()
         self._update_device_marker()
+        self._update_gps_status_overlay()
         return True
 
     def _check_gps_status(self) -> None:
