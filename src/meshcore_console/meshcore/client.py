@@ -778,7 +778,14 @@ class MeshcoreClient(MeshcoreService):
         )
 
     def get_device_location(self) -> tuple[float, float] | None:
-        return self._gps_provider.get_location()
+        loc = self._gps_provider.get_location()
+        if loc:
+            return loc
+        if self._settings.share_position:
+            lat, lon = self._settings.latitude, self._settings.longitude
+            if lat != 0.0 or lon != 0.0:
+                return (lat, lon)
+        return None
 
     def _on_radio_error(self, message: str) -> None:
         """Callback from RadioErrorHandler — emit as a UI event."""
