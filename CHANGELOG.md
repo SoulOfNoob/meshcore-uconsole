@@ -187,3 +187,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Don't land under 'Internet'
 - **deb**: Update to libgpiod3
+
+## Unreleased
+
+### Fix
+
+#### Hop count always showing "Direct" in message details
+
+Group channel messages always displayed **Hops: Direct** in the message details
+panel, even for messages that arrived via multiple repeaters.
+
+**Root cause:** MeshCore's `GroupTextHandler` publishes the decrypted message event
+(`mesh.channel.message.new`) without the raw packet fields `path_len` and
+`path_hops`. Those fields are only present on the earlier `packet` event that fires
+before decryption. The adapter already correlated these two events to enrich sender
+names, but it did not copy the path and signal fields across.
+
+**Fix:** Extended the existing packet↔handler correlation in `_enrich_sender_names()`
+to also propagate `path_len`, `path_hops`, `snr`, and `rssi` from the raw packet
+event into the handler event before it is processed and stored.
+
+> **Note:** Messages stored before this fix have `path_len = 0` and cannot be
+> updated in-place (`INSERT OR IGNORE` prevents overwrites). Delete
+> `~/.local/share/meshcore-console/meshcore.db` to start fresh; all new messages
+> will display correct hop data immediately.
+
