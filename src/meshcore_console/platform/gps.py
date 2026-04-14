@@ -513,6 +513,35 @@ def _gpsd_available(host: str = "127.0.0.1", port: int = 2947) -> bool:
         return False
 
 
+class NullGps:
+    """No-op GPS provider for systems without GPS hardware.
+
+    Returns None from get_location() so callers fall back to fixed
+    coordinates from settings rather than mock data.
+    """
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def get_location(self) -> tuple[float, float] | None:
+        return None
+
+    def set_callback(self, callback: Callable[[float, float], None] | None) -> None:
+        pass
+
+    def poll(self) -> bool:
+        return True
+
+    def get_last_error(self) -> str | None:
+        return None
+
+    def has_fix(self) -> bool:
+        return False
+
+
 def create_gps_provider() -> GpsProvider:
     """Create the appropriate GPS provider for the current environment.
 
@@ -520,7 +549,7 @@ def create_gps_provider() -> GpsProvider:
     1. MESHCORE_MOCK=1 → MockGps
     2. gpsd reachable (unless MESHCORE_GPSD_DISABLE=1) → GpsdProvider
     3. /dev/ttyS0 exists → UConsoleGps
-    4. Fallback → MockGps
+    4. Fallback → NullGps (returns None; callers use settings fixed position)
     """
     if os.environ.get("MESHCORE_MOCK", "0") == "1":
         from meshcore_console.mock import MockGps
@@ -539,7 +568,7 @@ def create_gps_provider() -> GpsProvider:
     if Path("/dev/ttyS0").exists():
         return UConsoleGps()
 
-    # Fall back to mock
-    from meshcore_console.mock import MockGps
-
-    return MockGps()
+    # No GPS hardware available — return null provider so callers fall back
+    # to fixed coordinates from settings rather than mock data.
+    logger.debug("GPS: no hardware detected, using NullGps")
+    return NullGps()
