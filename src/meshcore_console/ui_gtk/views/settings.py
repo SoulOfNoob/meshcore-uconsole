@@ -266,6 +266,10 @@ class SettingsView(Gtk.Box):
         grid.attach(self._grid_label("DIO3 TCXO"), 4, 3, 1, 1)
         grid.attach(self._grid_switch("use_dio3_tcxo"), 5, 3, 1, 1)
 
+        # GPS serial device row
+        grid.attach(self._grid_label("GPS Device"), 0, 4, 1, 1)
+        grid.attach(self._grid_entry("gps_serial_port", 16), 1, 4, 5, 1)
+
         panel.append(grid)
         return panel
 
@@ -496,6 +500,7 @@ class SettingsView(Gtk.Box):
         self._set_switch("is_waveshare", settings.is_waveshare)
         self._set_switch("use_dio2_rf", settings.use_dio2_rf)
         self._set_switch("use_dio3_tcxo", settings.use_dio3_tcxo)
+        self._set_entry("gps_serial_port", settings.gps_serial_port)
 
         # Logging
         self._log_level_combo.set_active_id(settings.log_level)
@@ -544,6 +549,8 @@ class SettingsView(Gtk.Box):
         out.is_waveshare = self._switches["is_waveshare"].get_active()
         out.use_dio2_rf = self._switches["use_dio2_rf"].get_active()
         out.use_dio3_tcxo = self._switches["use_dio3_tcxo"].get_active()
+        gps_port = self._entries["gps_serial_port"].get_text().strip()
+        out.gps_serial_port = gps_port or current.gps_serial_port
 
         # Logging
         out.log_level = self._log_level_combo.get_active_id() or "INFO"

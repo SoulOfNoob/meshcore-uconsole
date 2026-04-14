@@ -63,15 +63,16 @@ class MeshcoreClient(MeshcoreService):
         self._message_store = message_store or MessageStore(self._db)
         self._peer_store = peer_store or PeerStore(self._db)
         self._channel_store = channel_store or UIChannelStore(self._db)
-        self._gps_provider = gps_provider or create_gps_provider()
+        # Load settings first so the GPS provider can use the configured serial port
+        self._settings = self._settings_store.load()
+        if node_name != "uconsole-node":
+            self._settings.node_name = node_name
+        self._gps_provider = gps_provider or create_gps_provider(self._settings.gps_serial_port)
         # Load persisted state
         self._messages: list[Message] = self._message_store.get_all()
         self._channels: dict[str, Channel] = self._channel_store.get_all()
         self._peers: dict[str, Peer] = self._peer_store.get_all()
         self._sync_channel_secrets_to_ui()
-        self._settings = self._settings_store.load()
-        if node_name != "uconsole-node":
-            self._settings.node_name = node_name
         self._session = session if session is not None else self._new_session()
         self._config = runtime_config_from_settings(self._settings)
 
