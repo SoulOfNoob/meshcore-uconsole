@@ -187,3 +187,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Don't land under 'Internet'
 - **deb**: Update to libgpiod3
+
+## Unreleased
+
+### Fix
+
+#### Fixed position in settings not applied to adverts, telemetry, or map
+
+Setting a latitude/longitude under *Public Info* in Settings and enabling
+*Share GPS Position* had no effect. Sent adverts always contained `lat=0.0, lon=0.0`,
+telemetry responses returned no location, and the device map marker disappeared when
+no hardware GPS was connected.
+
+Three layered bugs, all in `meshcore/client.py` and `platform/gps.py`:
+
+**Bug A — `send_advert()` ignored lat/lon entirely.**
+Called `session.send_advert()` without forwarding coordinates; pyMC_core defaulted
+to `0.0, 0.0`. Fix: read `share_position` from settings, prefer live GPS fix, fall
+back to `settings.latitude` / `settings.longitude`.
+
+**Bug B — `create_gps_provider()` fell back to `MockGps` (San Francisco).**
+When no gpsd and no GPS serial device were found, the production code returned
+`MockGps`, which has `has_fix()=True` and returns SF waypoints. Bug A's fix checked
+`if loc:` — found SF — and used it, silently overriding settings. Fix: replaced the
+production fallback with `NullGps` (always returns `None`). `MockGps` is now only
+used in explicit mock mode (`MESHCORE_MOCK=1`).
+
+**Bug C — `get_device_location()` only read from GPS provider.**
+Map marker disappeared; "Center on device" showed "GPS acquiring satellites…". Fix:
+same GPS → settings fallback as `send_advert()`.
+
+**Consistency fix:** All three callsites treat `(0.0, 0.0)` as "not set" and send no
+location rather than placing the node at the equator/prime-meridian intersection.
+
