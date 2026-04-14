@@ -326,7 +326,7 @@ class MeshcoreClient(MeshcoreService):
             loc = self._gps_provider.get_location()
             if loc:
                 lat, lon = loc[0], loc[1]
-            else:
+            elif self._settings.latitude != 0.0 or self._settings.longitude != 0.0:
                 lat, lon = self._settings.latitude, self._settings.longitude
         result = self._run_async(self._session.send_advert(name=name, lat=lat, lon=lon, route_type=route_type))
         self._append_event(
@@ -842,9 +842,13 @@ class MeshcoreClient(MeshcoreService):
         """Provide local telemetry data for inbound requests."""
         loc = self._gps_provider.get_location()
         if loc:
-            lat, lon = loc[0], loc[1]
-        elif self._settings.share_position:
-            lat, lon = self._settings.latitude, self._settings.longitude
+            lat: float | None = loc[0]
+            lon: float | None = loc[1]
+        elif self._settings.share_position and (
+            self._settings.latitude != 0.0 or self._settings.longitude != 0.0
+        ):
+            lat = self._settings.latitude
+            lon = self._settings.longitude
         else:
             lat, lon = None, None
         return {

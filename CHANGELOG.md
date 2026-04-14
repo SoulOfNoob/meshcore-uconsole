@@ -84,6 +84,13 @@ to the values stored in settings.
   be treated as a live fix, silently overriding the settings position. The fallback
   is now `NullGps`, which returns `None` so callers correctly use the
   settings-configured fixed position.
+- `get_device_location()` now applies the same fallback, so the map view shows the
+  device marker at the configured fixed position and "Center on device" works without
+  GPS hardware. Previously the device marker was removed from the map and the button
+  showed "GPS acquiring satellites…" when NullGps was in use.
+- All three callsites (`send_advert`, `_get_local_telemetry`, `get_device_location`)
+  treat `(0.0, 0.0)` as "not set" and send no location rather than placing the node
+  at the equator/prime-meridian intersection.
 
 ---
 
